@@ -1,0 +1,22 @@
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+  
+  --color-primary: #1A4FBF;
+  --color-primary-light: #EEF3FF;
+  --color-accent: #F5A623;
+  --color-success: #22A96B;
+  --color-danger: #E53E3E;
+  --color-warning: #F6AD55;
+  --color-neutral-900: #1A202C;
+  --color-neutral-600: #4A5568;
+  --color-neutral-400: #A0AEC0;
+  --color-neutral-100: #F7F8FA;
+}
+
+body {
+  background-color: #f3f4f6; /* Gray background for desktop space */
+  margin: 0;
+  padding: 0;
+}
