@@ -3,7 +3,19 @@
   import { ArrowLeft, MailOpen } from '@lucide/svelte';
   import { fly } from 'svelte/transition';
 
-  let { onBack, onNext } = $props<{ onBack: () => void, onNext: () => void }>();
+  let { 
+    onBack, 
+    onNext, 
+    email = 'kerjantara@example.com',
+    onVerify,
+    onResend
+  } = $props<{ 
+    onBack: () => void, 
+    onNext: () => void,
+    email?: string,
+    onVerify?: (code: string) => Promise<{ success: boolean, message?: string }>,
+    onResend?: () => Promise<{ success: boolean, message?: string }>
+  }>();
 
   let otp = $state(['', '', '', '', '', '']);
   let timer = $state(47);
@@ -34,12 +46,23 @@
       inputRefs[index + 1]?.focus();
     }
     
-    // Auto-submit simulation
+    // Auto-submit verification
     if (index === 5 && value && otp.join('').length === 6) {
-      if (otp.join('') === '123456') { // success trigger
-        setTimeout(onNext, 500);
-      } else { // error trigger
-        error = true;
+      const code = otp.join('');
+      if (onVerify) {
+        onVerify(code).then(({ success, message }: { success: boolean, message?: string }) => {
+          if (success) {
+            onNext();
+          } else {
+            error = true;
+          }
+        });
+      } else {
+        if (code === '123456') {
+          setTimeout(onNext, 500);
+        } else {
+          error = true;
+        }
       }
     }
   };
@@ -56,8 +79,20 @@
     timer = 60;
     otp = ['', '', '', '', '', ''];
     error = false;
-    toast = true;
-    setTimeout(() => toast = false, 3000);
+    
+    if (onResend) {
+      onResend().then(({ success, message }: { success: boolean, message?: string }) => {
+        if (success) {
+          toast = true;
+          setTimeout(() => toast = false, 3000);
+        } else {
+          alert("Gagal kirim ulang OTP: " + message);
+        }
+      });
+    } else {
+      toast = true;
+      setTimeout(() => toast = false, 3000);
+    }
     inputRefs[0]?.focus();
   };
 </script>
@@ -107,7 +142,7 @@
     <p class="text-neutral-600 text-center text-[15px] mb-1">
       Kami sudah mengirimkan kode 6 digit ke
     </p>
-    <p class="font-bold text-primary mb-1">kerjantara@example.com</p>
+    <p class="font-bold text-primary mb-1">{email}</p>
     <p class="text-neutral-500 text-sm text-center mb-8">Kode berlaku selama 10 menit.</p>
 
     <!-- OTP Inputs -->

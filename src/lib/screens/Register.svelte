@@ -1,7 +1,11 @@
 <script lang="ts">
   import { ArrowLeft, Mail, Eye, EyeOff, CheckCircle2 } from '@lucide/svelte';
 
-  let { onBack, onNext } = $props<{ onBack: () => void, onNext: (name: string) => void }>();
+  let { onBack, onNext, onGoogleSignIn } = $props<{ 
+    onBack: () => void, 
+    onNext: (data: { name: string, email: string, phone: string }) => void,
+    onGoogleSignIn?: () => void 
+  }>();
 
   let showPassword = $state(false);
   let formData = $state({ name: '', email: '', phone: '', password: '', terms: false });
@@ -149,7 +153,7 @@
     <!-- Action Buttons -->
     <div class="mt-8">
       <button 
-        onclick={() => onNext(formData.name)}
+        onclick={() => onNext({ name: formData.name, email: formData.email, phone: formData.phone })}
         disabled={!isValid}
         class="w-full h-[52px] rounded-[12px] font-semibold text-base transition-all cursor-pointer {
           isValid ? 'bg-primary text-white shadow-[0_2px_12px_rgba(26,79,191,0.2)] hover:bg-blue-800' : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
@@ -164,7 +168,10 @@
         <div class="h-px bg-neutral-200 flex-1"></div>
       </div>
 
-      <button class="w-full bg-white border border-neutral-300 text-neutral-900 h-[52px] rounded-[12px] font-semibold text-base flex items-center justify-center gap-3 hover:bg-neutral-50 transition-colors cursor-pointer">
+      <button 
+        onclick={onGoogleSignIn}
+        class="w-full bg-white border border-neutral-300 text-neutral-900 h-[52px] rounded-[12px] font-semibold text-base flex items-center justify-center gap-3 hover:bg-neutral-50 transition-colors cursor-pointer"
+      >
         <svg viewBox="0 0 24 24" class="w-5 h-5">
           <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
           <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>

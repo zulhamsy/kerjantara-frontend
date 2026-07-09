@@ -8,11 +8,13 @@
   let {
     initialRole = 'jobseeker',
     userName = 'Budi Santoso',
-    userEmail = 'kerjantara@example.com'
+    userEmail = 'kerjantara@example.com',
+    onLogout
   } = $props<{
     initialRole?: 'jobseeker' | 'client';
     userName?: string;
     userEmail?: string;
+    onLogout?: () => void;
   }>();
 
   let currentViewRole = $state<'client' | 'worker'>(
@@ -123,41 +125,51 @@
           SIMULASI AKUN
         </span>
       </div>
-      <div class="flex bg-[#ffffff10] p-0.5 rounded border border-[#ffffff1a] shadow-inner">
-        <button
-          onclick={() => currentViewRole = 'client'}
-          class="px-2.5 py-1 text-[9px] font-semibold rounded-sm transition-all focus:outline-none uppercase flex items-center gap-1 cursor-pointer {
-            currentViewRole === 'client'
-              ? 'bg-[#1890ff] text-white font-bold shadow-sm'
-              : 'text-[#ffffffb3] hover:text-white'
-          }"
-        >
-          <span>💼 Pemberi Kerja</span>
-        </button>
-        <button
-          onclick={() => {
-            currentViewRole = 'worker';
-            if (!selectedWorker) {
-              selectedWorker = {
-                name: "Pak Budi Santoso",
-                avatar: "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=120&auto=format&fit=crop&q=60",
-                rating: 4.9,
-                completedJobs: 142,
-                distance: "1.2 km",
-                status: "Tersedia sekarang",
-                skills: ["Cat Dinding", "Cat Plafon", "Plester"],
-                price: "Rp 150.000 - 200.000"
-              };
-            }
-          }}
-          class="px-2.5 py-1 text-[9px] font-semibold rounded-sm transition-all focus:outline-none uppercase flex items-center gap-1 cursor-pointer {
-            currentViewRole === 'worker'
-              ? 'bg-[#f5a623] text-neutral-900 font-extrabold shadow-sm'
-              : 'text-[#ffffffb3] hover:text-white'
-          }"
-        >
-          <span>🛠️ Pekerja</span>
-        </button>
+      <div class="flex items-center gap-2.5">
+        <div class="flex bg-[#ffffff10] p-0.5 rounded border border-[#ffffff1a] shadow-inner">
+          <button
+            onclick={() => currentViewRole = 'client'}
+            class="px-2.5 py-1 text-[9px] font-semibold rounded-sm transition-all focus:outline-none uppercase flex items-center gap-1 cursor-pointer {
+              currentViewRole === 'client'
+                ? 'bg-[#1890ff] text-white font-bold shadow-sm'
+                : 'text-[#ffffffb3] hover:text-white'
+            }"
+          >
+            <span>💼 Pemberi Kerja</span>
+          </button>
+          <button
+            onclick={() => {
+              currentViewRole = 'worker';
+              if (!selectedWorker) {
+                selectedWorker = {
+                  name: "Pak Budi Santoso",
+                  avatar: "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=120&auto=format&fit=crop&q=60",
+                  rating: 4.9,
+                  completedJobs: 142,
+                  distance: "1.2 km",
+                  status: "Tersedia sekarang",
+                  skills: ["Cat Dinding", "Cat Plafon", "Plester"],
+                  price: "Rp 150.000 - 200.000"
+                };
+              }
+            }}
+            class="px-2.5 py-1 text-[9px] font-semibold rounded-sm transition-all focus:outline-none uppercase flex items-center gap-1 cursor-pointer {
+              currentViewRole === 'worker'
+                ? 'bg-[#f5a623] text-neutral-900 font-extrabold shadow-sm'
+                : 'text-[#ffffffb3] hover:text-white'
+            }"
+          >
+            <span>🛠️ Pekerja</span>
+          </button>
+        </div>
+        {#if onLogout}
+          <button
+            onclick={onLogout}
+            class="px-2 py-1 bg-red-600 hover:bg-red-750 text-white font-bold text-[9px] rounded border border-red-500 shadow-sm uppercase cursor-pointer"
+          >
+            Keluar
+          </button>
+        {/if}
       </div>
     </div>
   {/if}

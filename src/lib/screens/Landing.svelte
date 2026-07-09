@@ -4,23 +4,27 @@
   import { fly } from 'svelte/transition';
   import KerjantaraLogo from '../components/KerjantaraLogo.svelte';
 
-  let { onNext, onSkipToOTP } = $props<{ onNext: () => void, onSkipToOTP?: () => void }>();
+  let { onNext, onSkipToOTP, onGoogleSignIn, loggedInEmail } = $props<{ 
+    onNext: () => void, 
+    onSkipToOTP?: () => void,
+    onGoogleSignIn?: () => void,
+    loggedInEmail?: string
+  }>();
 
   let googleState = $state<'hidden' | 'loading' | 'ready'>('hidden');
 
   onMount(() => {
-    // Show loading snackbar after a short delay
-    const t1 = setTimeout(() => googleState = 'loading', 1000);
-    // Move to ready state (showing user email) after 3.5 seconds
-    const t2 = setTimeout(() => googleState = 'ready', 3500);
-
-    return () => { clearTimeout(t1); clearTimeout(t2); }
+    // Mock snackbar dinonaktifkan karena menggunakan Google One Tap asli
   });
 
   const handleClose = () => googleState = 'hidden';
   const handleContinue = () => {
     googleState = 'hidden';
-    if (onSkipToOTP) onSkipToOTP();
+    if (onGoogleSignIn) {
+      onGoogleSignIn();
+    } else if (onSkipToOTP) {
+      onSkipToOTP();
+    }
   };
 </script>
 
@@ -101,7 +105,10 @@
           <div class="h-px bg-neutral-300 flex-1"></div>
         </div>
 
-        <button class="w-full bg-white border border-neutral-300 text-neutral-900 h-[52px] rounded-[12px] font-semibold text-base flex items-center justify-center gap-3 hover:bg-neutral-50 transition-colors cursor-pointer">
+        <button 
+          onclick={onGoogleSignIn}
+          class="w-full bg-white border border-neutral-300 text-neutral-900 h-[52px] rounded-[12px] font-semibold text-base flex items-center justify-center gap-3 hover:bg-neutral-50 transition-colors cursor-pointer"
+        >
           <svg viewBox="0 0 24 24" class="w-5 h-5">
             <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
             <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -146,7 +153,7 @@
             </div>
             <div>
               <p class="text-xs text-neutral-500 font-medium leading-none mb-1">Lanjutkan sebagai</p>
-              <p class="text-sm font-bold text-neutral-900 leading-none">example@kerjantara.id</p>
+              <p class="text-sm font-bold text-neutral-900 leading-none">{loggedInEmail}</p>
             </div>
           </div>
           <button onclick={handleClose} class="text-neutral-400 hover:text-neutral-600 p-1 -mr-1 cursor-pointer">
