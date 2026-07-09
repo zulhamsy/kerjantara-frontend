@@ -76,6 +76,10 @@
     goto('/auth/otp');
   }
 
+  function handleLogin() {
+    goto('/auth/login');
+  }
+
   async function handleGoogleSignIn() {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
@@ -106,6 +110,7 @@
         onNext={handleNext} 
         onSkipToOTP={handleSkip} 
         onGoogleSignIn={handleGoogleSignIn} 
+        onLogin={handleLogin}
         loggedInEmail={appState.userEmail}
       />
     </div>

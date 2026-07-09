@@ -1,14 +1,16 @@
 <script lang="ts">
   import { ArrowLeft, Mail, Eye, EyeOff, CheckCircle2 } from '@lucide/svelte';
 
-  let { onBack, onNext, onGoogleSignIn } = $props<{ 
+  let { onBack, onNext, onGoogleSignIn, onLogin, initialEmail = '' } = $props<{ 
     onBack: () => void, 
-    onNext: (data: { name: string, email: string, phone: string }) => void,
-    onGoogleSignIn?: () => void 
+    onNext: (data: { name: string, email: string, phone: string, password?: string }) => void,
+    onGoogleSignIn?: () => void,
+    onLogin?: () => void,
+    initialEmail?: string
   }>();
 
   let showPassword = $state(false);
-  let formData = $state({ name: '', email: '', phone: '', password: '', terms: false });
+  let formData = $state({ name: '', email: initialEmail, phone: '', password: '', terms: false });
 
   // Simple validation state for visual mockup - enabled if name is filled
   let isValid = $derived(formData.name.trim().length > 0);
@@ -153,7 +155,7 @@
     <!-- Action Buttons -->
     <div class="mt-8">
       <button 
-        onclick={() => onNext({ name: formData.name, email: formData.email, phone: formData.phone })}
+        onclick={() => onNext({ name: formData.name, email: formData.email, phone: formData.phone, password: formData.password })}
         disabled={!isValid}
         class="w-full h-[52px] rounded-[12px] font-semibold text-base transition-all cursor-pointer {
           isValid ? 'bg-primary text-white shadow-[0_2px_12px_rgba(26,79,191,0.2)] hover:bg-blue-800' : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
@@ -180,6 +182,10 @@
         </svg>
         Google
       </button>
+
+      <p class="text-center text-sm mt-8 text-neutral-600">
+        Sudah punya akun? <button onclick={onLogin} class="font-bold text-primary hover:underline cursor-pointer">Masuk</button>
+      </p>
     </div>
   </div>
 </div>

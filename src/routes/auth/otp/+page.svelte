@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
   import { appState } from '$lib/appState.svelte';
   import VerifyOTP from '$lib/screens/VerifyOTP.svelte';
   import { supabase } from '$lib/supabaseClient';
@@ -11,7 +12,12 @@
     // Redirect back if userEmail is not set (e.g., on page refresh)
     if (!appState.userEmail) {
       alert("Sesi tidak ditemukan. Harap masukkan email Anda terlebih dahulu.");
-      goto('/auth/register');
+      const flow = $page.url.searchParams.get('flow');
+      if (flow === 'login') {
+        goto('/auth/login');
+      } else {
+        goto('/auth/register');
+      }
     }
   });
 
@@ -20,10 +26,13 @@
     loading = true;
 
     try {
+      const flow = $page.url.searchParams.get('flow');
+      const otpType = flow === 'register' ? 'signup' : 'email';
+
       const { data, error } = await supabase.auth.verifyOtp({
         email: appState.userEmail,
         token: code,
-        type: 'email'
+        type: otpType
       });
 
       if (error) {
@@ -44,12 +53,27 @@
 
   async function handleResend(): Promise<{ success: boolean, message?: string }> {
     try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: appState.userEmail,
-        options: {
-          shouldCreateUser: false
-        }
-      });
+      const flow = $page.url.searchParams.get('flow');
+      let error;
+
+      if (flow === 'register') {
+        const { error: resendError } = await supabase.auth.resend({
+          type: 'signup',
+          email: appState.userEmail,
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback?next=/onboarding/role`
+          }
+        });
+        error = resendError;
+      } else {
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email: appState.userEmail,
+          options: {
+            shouldCreateUser: false
+          }
+        });
+        error = otpError;
+      }
 
       if (error) {
         return { success: false, message: error.message };
@@ -61,11 +85,21 @@
   }
 
   function handleNext() {
-    goto('/onboarding/role');
+    const flow = $page.url.searchParams.get('flow');
+    if (flow === 'login') {
+      goto('/dashboard');
+    } else {
+      goto('/onboarding/role');
+    }
   }
 
   function handleBack() {
-    goto('/auth/register');
+    const flow = $page.url.searchParams.get('flow');
+    if (flow === 'login') {
+      goto('/auth/login');
+    } else {
+      goto('/auth/register');
+    }
   }
 </script>
 

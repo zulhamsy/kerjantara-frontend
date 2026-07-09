@@ -4,10 +4,11 @@
   import { fly } from 'svelte/transition';
   import KerjantaraLogo from '../components/KerjantaraLogo.svelte';
 
-  let { onNext, onSkipToOTP, onGoogleSignIn, loggedInEmail } = $props<{ 
+  let { onNext, onSkipToOTP, onGoogleSignIn, onLogin, loggedInEmail } = $props<{ 
     onNext: () => void, 
     onSkipToOTP?: () => void,
     onGoogleSignIn?: () => void,
+    onLogin?: () => void,
     loggedInEmail?: string
   }>();
 
@@ -35,7 +36,7 @@
     <!-- Header -->
     <header class="px-6 pt-6 pb-2 flex items-center justify-between">
       <KerjantaraLogo iconSize={24} textSize="text-base" />
-      <button class="text-sm font-semibold text-[#1976D2] border border-[#1976D2] px-4 py-1.5 rounded-full hover:bg-neutral-50 transition-colors">
+      <button onclick={onLogin} class="text-sm font-semibold text-[#1976D2] border border-[#1976D2] px-4 py-1.5 rounded-full hover:bg-neutral-50 transition-colors cursor-pointer">
         Masuk
       </button>
     </header>
@@ -120,7 +121,7 @@
       </div>
 
       <p class="text-center text-sm mt-6 text-neutral-600">
-        Sudah punya akun? <button class="font-bold text-primary cursor-pointer">Masuk</button>
+        Sudah punya akun? <button onclick={onLogin} class="font-bold text-primary cursor-pointer">Masuk</button>
       </p>
 
       <p class="text-center text-[11px] mt-6 text-neutral-400 max-w-[280px] mx-auto leading-relaxed">
