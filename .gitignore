@@ -24,3 +24,4 @@ vite.config.ts.timestamp-*
 
 .dist
 .svelte-kit
+package-lock.json
