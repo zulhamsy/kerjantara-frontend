@@ -3,8 +3,8 @@
   import { appState } from '$lib/appState.svelte';
   import SelfieCamera from '$lib/screens/SelfieCamera.svelte';
 
-  function handleNext() {
-    appState.selfiePhoto = "data:image/jpeg;base64,...";
+  function handleNext(dataUrl: string) {
+    appState.selfiePhoto = dataUrl;
     goto('/onboarding/review');
   }
 

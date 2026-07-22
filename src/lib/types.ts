@@ -16,6 +16,8 @@ export interface WorkerProfile {
   skills: string[];
   price: string;
   bio?: string;
+  match_id?: string;
+  worker_id?: string;
   personalityFilters?: string[];
   portfolioBeforeAfter?: {
     before: string;

@@ -1,16 +1,26 @@
 <script lang="ts">
-  import { ArrowLeft, Clock } from '@lucide/svelte';
+  import { ArrowLeft, Clock, Loader2, AlertCircle } from '@lucide/svelte';
+  import { goto } from '$app/navigation';
+  import { appState } from '../appState.svelte';
 
-  let { onBack, onNext } = $props<{ onBack: () => void, onNext: () => void }>();
+  let { onBack, onNext, loading = false, errorMessage = null } = $props<{ 
+    onBack: () => void, 
+    onNext: () => void,
+    loading?: boolean,
+    errorMessage?: string | null
+  }>();
 
   let agreed = $state(false);
+
+  const fullName = $derived(appState.user?.full_name || appState.userName || 'User');
+  const email = $derived(appState.user?.email || appState.userEmail || '-');
 </script>
 
 <div class="flex-1 flex flex-col bg-neutral-50 overflow-hidden h-full relative">
   <!-- Header -->
   <header class="px-5 pt-6 pb-4 flex flex-col gap-4 bg-white z-10 border-b border-neutral-100">
     <div class="flex items-center relative">
-      <button onclick={onBack} class="p-2 -ml-2 text-neutral-900 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
+      <button onclick={onBack} disabled={loading} class="p-2 -ml-2 text-neutral-900 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer disabled:opacity-50">
         <ArrowLeft size={24} />
       </button>
       <h1 class="font-bold text-lg flex-1 text-center pr-8 text-neutral-900">Periksa Datamu</h1>
@@ -22,13 +32,20 @@
         <div class="h-1 flex-1 bg-primary rounded-full"></div>
         <div class="h-1 flex-1 bg-primary rounded-full"></div>
         <div class="h-1 flex-1 bg-primary rounded-full"></div>
-        <div class="h-1 flex-1 bg-primary rounded-full w-3/4"></div>
+        <div class="h-1 flex-1 bg-primary rounded-full"></div>
       </div>
     </div>
   </header>
 
   <!-- Content -->
   <div class="flex-1 overflow-y-auto px-5 pt-6 pb-28">
+    {#if errorMessage}
+       <div class="mb-4 bg-red-50 border border-red-100 p-4 rounded-xl flex gap-3 items-center">
+          <AlertCircle class="text-danger shrink-0" size={20} />
+          <p class="text-xs font-bold text-danger">{errorMessage}</p>
+       </div>
+    {/if}
+
     <h2 class="text-[24px] font-bold text-neutral-900 mb-2 leading-[1.3]">
       Periksa Sebelum<br/>Mengirim
     </h2>
@@ -40,21 +57,20 @@
     <div class="bg-white rounded-2xl p-5 shadow-sm border border-neutral-100 mb-4">
        <div class="flex justify-between items-center mb-4">
          <h3 class="font-bold text-neutral-900 text-base">Data Akun</h3>
-         <button class="text-primary font-semibold text-xs hover:underline cursor-pointer">Ubah</button>
        </div>
        
        <div class="flex flex-col gap-3">
          <div class="flex justify-between border-b border-neutral-50 pb-3">
            <span class="text-neutral-500 text-sm">Nama Lengkap</span>
-           <span class="text-neutral-900 font-medium text-sm">Budi Santoso</span>
+           <span class="text-neutral-900 font-medium text-sm">{fullName}</span>
          </div>
          <div class="flex justify-between border-b border-neutral-50 pb-3">
            <span class="text-neutral-500 text-sm">Email</span>
-           <span class="text-neutral-900 font-medium text-sm">budi@email.com</span>
+           <span class="text-neutral-900 font-medium text-sm">{email}</span>
          </div>
          <div class="flex justify-between">
-           <span class="text-neutral-500 text-sm">Nomor HP</span>
-           <span class="text-neutral-900 font-medium text-sm">+62 812 3456 7890</span>
+           <span class="text-neutral-500 text-sm">Role Aktif</span>
+           <span class="text-primary font-bold text-sm uppercase tracking-wider">{appState.user?.role || '-'}</span>
          </div>
        </div>
     </div>
@@ -67,14 +83,17 @@
        
        <div class="flex items-center gap-4 bg-neutral-50 p-3 rounded-xl border border-neutral-100">
          <div class="w-[80px] h-[55px] bg-neutral-200 rounded-lg overflow-hidden relative">
-            <!-- Fake image preview -->
-            <div class="absolute inset-0 bg-blue-100/50"></div>
+            {#if appState.docPhoto}
+               <img src={appState.docPhoto} alt="KTP" class="w-full h-full object-cover" />
+            {:else}
+               <div class="absolute inset-0 bg-blue-100/50"></div>
+            {/if}
          </div>
          <div class="flex-1">
            <span class="block font-bold text-neutral-900 text-sm">KTP</span>
-           <span class="text-success text-xs font-semibold">Diunggah ✓</span>
+           <span class="text-success text-xs font-semibold">Siap dikirim ✓</span>
          </div>
-         <button class="text-primary font-semibold text-xs hover:underline cursor-pointer">Ubah</button>
+         <button onclick={() => goto('/onboarding/document')} class="text-primary font-semibold text-xs hover:underline cursor-pointer">Ubah</button>
        </div>
     </div>
 
@@ -86,14 +105,17 @@
        
        <div class="flex items-center gap-4 bg-neutral-50 p-3 rounded-xl border border-neutral-100">
          <div class="w-[56px] h-[56px] bg-neutral-200 rounded-full overflow-hidden relative border-2 border-white shadow-sm">
-            <!-- Fake face preview -->
-            <div class="absolute inset-x-2 bottom-0 h-8 bg-neutral-400 rounded-t-full"></div>
-            <div class="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-8 bg-neutral-300 rounded-full"></div>
+            {#if appState.selfiePhoto}
+               <img src={appState.selfiePhoto} alt="Selfie" class="w-full h-full object-cover" />
+            {:else}
+               <div class="absolute inset-x-2 bottom-0 h-8 bg-neutral-400 rounded-t-full"></div>
+               <div class="absolute top-2 left-1/2 -translate-x-1/2 w-8 h-8 bg-neutral-300 rounded-full"></div>
+            {/if}
          </div>
          <div class="flex-1">
            <span class="text-success text-xs font-semibold">Terdeteksi ✓</span>
          </div>
-         <button class="text-primary font-semibold text-xs hover:underline cursor-pointer">Ubah</button>
+         <button onclick={() => goto('/onboarding/selfie-camera')} class="text-primary font-semibold text-xs hover:underline cursor-pointer">Ubah</button>
        </div>
     </div>
 
@@ -111,7 +133,8 @@
         <input 
           type="checkbox" 
           bind:checked={agreed}
-          class="peer shrink-0 appearance-none w-5 h-5 border-2 border-neutral-300 rounded-[6px] checked:bg-primary checked:border-primary focus:outline-none transition-all"
+          disabled={loading}
+          class="peer shrink-0 appearance-none w-5 h-5 border-2 border-neutral-300 rounded-[6px] checked:bg-primary checked:border-primary focus:outline-none transition-all disabled:opacity-50"
         />
          <svg class="absolute w-3 h-3 text-white opacity-0 peer-checked:opacity-100 pointer-events-none" viewBox="0 0 12 10" fill="none">
           <path d="M1 4.5L4.5 8L11 1" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -127,12 +150,17 @@
   <div class="absolute bottom-0 left-0 right-0 p-5 bg-white border-t border-neutral-100 shadow-[0_-4px_16px_rgba(0,0,0,0.02)] z-10">
     <button 
       onclick={onNext}
-      disabled={!agreed}
-      class="w-full h-[52px] rounded-[12px] font-semibold text-base transition-all cursor-pointer {
-        agreed ? 'bg-primary text-white shadow-[0_2px_12px_rgba(26,79,191,0.2)] hover:bg-blue-800' : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
+      disabled={!agreed || loading}
+      class="w-full h-[52px] rounded-[12px] font-semibold text-base transition-all cursor-pointer flex items-center justify-center gap-2 {
+        agreed && !loading ? 'bg-primary text-white shadow-[0_2px_12px_rgba(26,79,191,0.2)] hover:bg-blue-800' : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
       }"
     >
-      Kirim untuk Diverifikasi &rarr;
+      {#if loading}
+        <Loader2 class="animate-spin" size={20} />
+        Mengirim Dokumen...
+      {:else}
+        Kirim untuk Diverifikasi &rarr;
+      {/if}
     </button>
   </div>
 </div>

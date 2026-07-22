@@ -3,6 +3,7 @@
   import Login from '$lib/screens/Login.svelte';
   import { supabase } from '$lib/supabaseClient';
   import { appState } from '$lib/appState.svelte';
+  import { syncSupabaseWithBackend } from '$lib/api/auth';
 
   let loading = $state(false);
   let errorMessage = $state<string | null>(null);
@@ -45,14 +46,30 @@
           showErrorMessage("Gagal Masuk: " + error.message);
         }
       } else {
-        // Setelah masuk sukses, sinkronkan data profil pengguna ke appState
-        if (authData.user) {
-          appState.userName = authData.user.user_metadata?.full_name || authData.user.email?.split('@')[0] || 'User';
-          appState.userEmail = authData.user.email || '';
-          appState.otpVerified = true;
+        // Sync with backend
+        try {
+          const backendData = await syncSupabaseWithBackend();
+
+          // Setelah masuk sukses, sinkronkan data profil pengguna ke appState
+          if (authData.user) {
+            appState.userName = authData.user.user_metadata?.full_name || authData.user.email?.split('@')[0] || 'User';
+            appState.userEmail = authData.user.email || '';
+            appState.otpVerified = true;
+          }
+
+          // Redirect based on role and verif_status
+          if (!backendData.role || backendData.role === '') {
+            goto('/onboarding/role', { replaceState: true });
+          } else if (backendData.verif_status !== 'approved' && backendData.verif_status !== 'pending') {
+            goto('/onboarding/document', { replaceState: true });
+          } else {
+            goto('/dashboard', { replaceState: true });
+          }
+        } catch (syncErr) {
+          console.error("Backend sync failed:", syncErr);
+          // Fallback
+          goto('/dashboard', { replaceState: true });
         }
-        // Masuk langsung ke dashboard
-        goto('/dashboard');
       }
     } catch (err: any) {
       showErrorMessage("Terjadi kesalahan sistem: " + (err.message || err));
@@ -70,7 +87,7 @@
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback?next=/dashboard`
+          redirectTo: `${window.location.origin}/auth/callback?next=/onboarding/role`
         }
       });
       if (error) {

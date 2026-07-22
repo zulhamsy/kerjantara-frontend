@@ -7,8 +7,10 @@
   import { supabase } from '$lib/supabaseClient';
   import { appState } from '$lib/appState.svelte';
   import { env } from '$env/dynamic/public';
+  import { syncSupabaseWithBackend } from '$lib/api/auth';
 
   let showLanding = $state(false);
+  let loading = $state(false);
 
   onMount(() => {
     const googleClientId = env.PUBLIC_GOOGLE_CLIENT_ID;
@@ -47,6 +49,7 @@
   });
 
   async function handleCredentialResponse(response: any) {
+    loading = true;
     try {
       const { data, error } = await supabase.auth.signInWithIdToken({
         provider: 'google',
@@ -56,11 +59,22 @@
       if (error) {
         alert("Gagal masuk dengan Google One Tap: " + error.message);
       } else {
-        // Redirect setelah login sukses ke onboarding role
-        goto('/onboarding/role');
+        // Sync with backend
+        const backendData = await syncSupabaseWithBackend();
+        
+        // Redirect based on role and verif_status
+        if (!backendData.role || backendData.role === '') {
+          goto('/onboarding/role', { replaceState: true });
+        } else if (backendData.verif_status !== 'approved' && backendData.verif_status !== 'pending') {
+          goto('/onboarding/document', { replaceState: true });
+        } else {
+          goto('/dashboard', { replaceState: true });
+        }
       }
     } catch (err: any) {
       alert("Terjadi kesalahan sistem: " + (err.message || err));
+    } finally {
+      loading = false;
     }
   }
 
@@ -81,6 +95,7 @@
   }
 
   async function handleGoogleSignIn() {
+    loading = true;
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -93,6 +108,8 @@
       }
     } catch (err: any) {
       alert("Terjadi kesalahan sistem: " + (err.message || err));
+    } finally {
+      loading = false;
     }
   }
 </script>

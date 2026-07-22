@@ -1,27 +1,19 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { goto } from '$app/navigation';
   import { appState } from '$lib/appState.svelte';
-  import Dashboard from '$lib/screens/Dashboard.svelte';
-  import { supabase } from '$lib/supabaseClient';
 
-  async function handleLogout() {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      alert("Gagal Keluar: " + error.message);
+  onMount(() => {
+    if (appState.user?.active_role === 'employer') {
+      goto('/dashboard/employer', { replaceState: true });
+    } else if (appState.user?.active_role === 'worker') {
+      goto('/dashboard/worker', { replaceState: true });
     } else {
-      appState.reset();
-      goto('/');
+      goto('/onboarding/role');
     }
-  }
+  });
 </script>
 
-<svelte:head>
-  <title>Dashboard - Kerjantara</title>
-</svelte:head>
-
-<Dashboard
-  initialRole={appState.userRole}
-  userName={appState.userName}
-  userEmail={appState.userEmail}
-  onLogout={handleLogout}
-/>
+<div class="flex-1 flex items-center justify-center bg-white">
+  <div class="w-10 h-10 border-4 border-neutral-200 border-t-primary rounded-full animate-spin"></div>
+</div>

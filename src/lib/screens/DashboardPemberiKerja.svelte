@@ -1,9 +1,14 @@
 <script lang="ts">
   import { 
     Plus, Users, Eye, Phone, MessageSquare, Star, Play, CheckCircle2, 
-    MapPin, Clock, ShieldAlert, Award, FileText, ChevronRight, X, AlertTriangle
+    MapPin, Clock, ShieldAlert, Award, FileText, ChevronRight, X, AlertTriangle, Loader2
   } from '@lucide/svelte';
+  import { onMount } from 'svelte';
+  import { api } from '../api/client';
+  import type { SkillCategory, RateCard, CreateJobRequest, CreateJobResponse, Candidate, CreatePaymentResponse } from '../api/types';
   import type { JobRequest, WorkerProfile, TransactionStep } from '../types';
+  import { appState } from '../appState.svelte';
+  import { getAddressFromCoords } from '../api/geo';
   import KerjantaraLogo from '../components/KerjantaraLogo.svelte';
 
   let {
@@ -13,7 +18,8 @@
     selectedWorker = $bindable(),
     onOpenChat,
     onOpenDispute,
-    onRestartTransaction
+    onRestartTransaction,
+    onLogout
   } = $props<{
     userName: string;
     transactionStep: TransactionStep;
@@ -22,15 +28,24 @@
     onOpenChat: () => void;
     onOpenDispute: () => void;
     onRestartTransaction: () => void;
+    onLogout?: () => void;
   }>();
   
   let activeMenu = $state<'beranda' | 'permintaan' | 'pekerja' | 'pesan'>('beranda');
   
-  let category = $state('Tukang Cat');
+  // Job Form States
+  let parentCategoryId = $state<number | null>(null);
+  let selectedCategoryId = $state<number | null>(null);
   let description = $state('');
-  let location = $state('Jl. Mawar No. 12, Kebayoran Baru');
+  let location = $state('Mencari lokasi...');
   let duration = $state('Setengah hari');
   let budget = $state('180000');
+  let lat = $state(-6.2088);
+  let lng = $state(106.8456);
+
+  // Map States
+  let map: any = null;
+  let marker: any = null;
   
   let starCount = $state(5);
   let reviewInput = $state('');
@@ -41,107 +56,278 @@
   let selectedPersonality = $state<string>('Semua');
   let portfolioWorker = $state<WorkerProfile | null>(null);
 
-  const candidates: WorkerProfile[] = [
-    {
-      name: "Pak Budi Santoso",
-      avatar: "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=120&auto=format&fit=crop&q=60",
-      rating: 4.9,
-      completedJobs: 142,
-      distance: "1.2 km",
-      status: "Tersedia sekarang",
-      skills: ["Cat Dinding", "Cat Plafon", "Plester tembok"],
-      price: "Rp 150.000 - 200.000",
-      bio: "Spesialis tukang cat interior dengan pengalaman 8 tahun. Ahli mengatasi rembesan air pada dinding, plesteran retak rambut, hingga pengecatan rapi 3 lapis.",
-      personalityFilters: ["Sangat Teliti", "Sopan & Ramah", "Tepat Waktu"],
-      portfolioBeforeAfter: [
-        {
-          title: "Restorasi Dinding Rembes & Berjamur",
-          before: "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=400&auto=format&fit=crop&q=80",
-          after: "https://images.unsplash.com/photo-1562259949-e8e7689d7828?w=400&auto=format&fit=crop&q=80"
-        }
-      ]
-    },
-    {
-      name: "Pak Agung Wijaya",
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=60",
-      rating: 4.8,
-      completedJobs: 98,
-      distance: "1.9 km",
-      status: "Tersedia pukul 14:00",
-      skills: ["Cat Kayu", "Mengecat Besi", "Wallpaper"],
-      price: "Rp 170.000 - 220.000",
-      bio: "Biasa mengerjakan pengerjaan pagar besi eksterior tahan karat dan pernis kayu mengkilap. Kerja rapi, bersih, tanpa menyisakan noda cat berantakan.",
-      personalityFilters: ["Inisiatif Tinggi", "Sopan & Ramah", "Cepat & Sigap"],
-      portfolioBeforeAfter: [
-        {
-          title: "Finishing Cat Pagar Mewah Anti Karat",
-          before: "https://images.unsplash.com/photo-1516331138075-f3ad157c6c74?w=400&auto=format&fit=crop&q=80",
-          after: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=400&auto=format&fit=crop&q=80"
-        }
-      ]
-    },
-    {
-      name: "Pak Cecep Rahman",
-      avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=60",
-      rating: 4.7,
-      completedJobs: 115,
-      distance: "2.4 km",
-      status: "Tersedia sekarang",
-      skills: ["Cat Duco", "Melamic", "Mengecat Kusen"],
-      price: "Rp 140.000 - 180.000",
-      bio: "Fokus pada finishing mebel/furniture menggunakan semprotan Cat Duco premium atau pelitur melamic mengkilap tinggi untuk kusen pintu jendela jati.",
-      personalityFilters: ["Sangat Teliti", "Pendiam / Fokus", "Cepat & Sigap"],
-      portfolioBeforeAfter: [
-        {
-          title: "Pernis Melamic Meja Kayu Jati Kuno",
-          before: "https://images.unsplash.com/photo-1533090161767-e6ffed986c88?w=400&auto=format&fit=crop&q=80",
-          after: "https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=400&auto=format&fit=crop&q=80"
-        }
-      ]
-    }
-  ];
+  let parentCategories = $state<SkillCategory[]>([]);
+  let rateCards = $state<RateCard[]>([]);
+  let isLoadingData = $state(false);
 
-  const categories = [
-    { name: "Tukang Cat", icon: "🎨" },
-    { name: "Tukang Ledeng", icon: "🔧" },
-    { name: "Teknisi Listrik", icon: "⚡" },
-    { name: "Tukang Kayu", icon: "🪵" },
-    { name: "Bersih-bersih", icon: "🧹" },
-    { name: "Taman & Kebun", icon: "🌿" },
-    { name: "Lainnya", icon: "⚙️" }
-  ];
+  // Derived flat list for easier lookups
+  const allSubCategories = $derived(
+    parentCategories.flatMap(p => p.children || [])
+  );
 
+  const subCategories = $derived(
+    parentCategoryId 
+      ? parentCategories.find(p => p.id === parentCategoryId)?.children || []
+      : []
+  );
+
+  // Sync sub-category selection when parent changes
   $effect(() => {
-    if (transactionStep === 'matching') {
-      const timer = setTimeout(() => {
-        transactionStep = 'kandidat_list';
-      }, 3000);
-      return () => clearTimeout(timer);
+    if (parentCategoryId) {
+      const sub = parentCategories.find(p => p.id === parentCategoryId)?.children;
+      if (sub && sub.length > 0) {
+        if (!sub.some(s => s.id === selectedCategoryId)) {
+          selectedCategoryId = sub[0].id;
+        }
+      }
     }
   });
 
-  const handlePostJob = () => {
-    jobRequest = {
-      category,
-      description: description || "Saya mencari tukang profesional untuk menyelesaikan perbaikan.",
-      location,
-      duration,
-      budget: budget ? `Rp ${parseInt(budget).toLocaleString('id-ID')}` : 'Negosiasi'
-    };
-    transactionStep = 'matching';
+  onMount(async () => {
+    isLoadingData = true;
+    
+    // 1. Fetch Categories First (Independent)
+    try {
+      const response = await api.get<{ categories: SkillCategory[] }>('/ref/skill-categories');
+      if (response && response.categories) {
+        parentCategories = response.categories;
+        console.log("Categories loaded:", parentCategories.length);
+      }
+    } catch (err) {
+      console.error('Failed to fetch categories:', err);
+      // Fallback
+      parentCategories = [
+        { 
+          id: 10, label: "Konstruksi & Renovasi", code: "KONSTRUKSI", 
+          children: [
+            { id: 11, label: "Tukang Cat", code: "TUKANG_CAT" },
+            { id: 14, label: "Tukang Ledeng", code: "TUKANG_LEDENG" }
+          ]
+        },
+        { 
+          id: 1, label: "Rumah Tangga", code: "RUMAH_TANGGA",
+          children: [
+            { id: 2, label: "ART Harian", code: "ART_HARIAN" }
+          ]
+        }
+      ];
+    }
+
+    // 2. Fetch Rate Cards (Optional, don't block)
+    try {
+      const rates = await api.get<RateCard[]>('/ref/rate-cards');
+      if (rates) rateCards = rates;
+    } catch (err) {
+      console.warn('Failed to fetch rate cards:', err);
+    }
+
+    // 3. Initial Selection
+    if (parentCategories.length > 0) {
+      if (parentCategoryId === null) parentCategoryId = parentCategories[0].id;
+      
+      const sub = parentCategories.find(p => p.id === parentCategoryId)?.children;
+      if (sub && sub.length > 0 && selectedCategoryId === null) {
+        selectedCategoryId = sub[0].id;
+      }
+    }
+
+    isLoadingData = false;
+
+    // 4. Initialize Map
+    if (transactionStep === 'creating') {
+      setTimeout(initMap, 200);
+    }
+  });
+
+  // Re-init map when step changes to creating
+  $effect(() => {
+    if (transactionStep === 'creating' && !map) {
+      setTimeout(initMap, 100);
+    }
+  });
+
+  async function initMap() {
+    if (typeof window === 'undefined' || !(window as any).L) return;
+    if (!document.getElementById('map-container')) return;
+    const L = (window as any).L;
+
+    // Get current location
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+      });
+      lat = pos.coords.latitude;
+      lng = pos.coords.longitude;
+    } catch (e) {
+      console.warn("Could not get GPS, using default");
+    }
+
+    if (!map) {
+      map = L.map('map-container').setView([lat, lng], 16);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+
+      marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+      
+      marker.on('moveend', async (e: any) => {
+        const newPos = e.target.getLatLng();
+        lat = newPos.lat;
+        lng = newPos.lng;
+        location = "Mencari alamat...";
+        location = await getAddressFromCoords(lat, lng);
+      });
+
+      // Initial address fetch
+      location = await getAddressFromCoords(lat, lng);
+    } else {
+      map.setView([lat, lng], 16);
+      marker.setLatLng([lat, lng]);
+    }
+  }
+
+  const selectedRateCard = $derived(
+    rateCards.find(r => r.skill_cat_id === selectedCategoryId)
+  );
+
+  const categoryName = $derived(
+    allSubCategories.find(c => c.id === selectedCategoryId)?.label || "Pekerjaan"
+  );
+
+  let candidates = $state<WorkerProfile[]>([]);
+
+  $effect(() => {
+    // Logic for matching removed as it is now in handlePostJob
+  });
+
+  let isPostingJob = $state(false);
+
+  const handlePostJob = async () => {
+    if (isPostingJob || !selectedCategoryId) return;
+    isPostingJob = true;
+
+    try {
+      // 1. Prepare Request
+      const payload: CreateJobRequest = {
+        skill_cat_id: selectedCategoryId,
+        description: description || "Saya mencari tukang profesional untuk menyelesaikan perbaikan.",
+        budget: parseInt(budget) || 0,
+        lat: lat,
+        lng: lng,
+        city_code: "JAKARTA" // Default for now, can be extracted from Nominatim address
+      };
+
+      // 2. UI Transition
+      transactionStep = 'matching';
+
+      // 3. API Call
+      const res = await api.post<CreateJobResponse>('/jobs', payload);
+      
+      // Sync global state
+      appState.currentJob = { id: res.job_id } as any;
+
+      // Update Local State for UI
+      jobRequest = {
+        category: allSubCategories.find(c => c.id === selectedCategoryId)?.label || "Pekerjaan",
+        description: payload.description,
+        location: location,
+        duration: duration,
+        budget: budget ? `Rp ${parseInt(budget).toLocaleString('id-ID')}` : 'Negosiasi'
+      };
+
+      // Map backend candidates to frontend WorkerProfile format
+      candidates = res.candidates.map(c => ({
+        name: c.full_name,
+        avatar: c.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(c.full_name)}&background=random`,
+        rating: c.kerjantara_score,
+        completedJobs: c.total_jobs_done,
+        distance: `${c.distance_km.toFixed(1)} km`,
+        status: "Tersedia",
+        skills: [jobRequest.category],
+        price: c.price || budget,
+        bio: c.bio,
+        match_id: c.match_id,
+        worker_id: c.worker_id
+      } as any));
+
+      // 4. Done matching
+      setTimeout(() => {
+        transactionStep = 'kandidat_list';
+      }, 1500);
+
+    } catch (err: any) {
+      console.error("Job posting error:", err);
+      alert("Gagal membuat pekerjaan: " + (err.message || "Terjadi kesalahan sistem."));
+      transactionStep = 'creating';
+    } finally {
+      isPostingJob = false;
+    }
   };
 
-  const handleSelectCandidate = (candidate: WorkerProfile) => {
+  const handleSelectCandidate = (candidate: any) => {
     selectedWorker = candidate;
   };
 
-  const handleSendProposal = () => {
-    showEscrowModal = true;
+  const handleSendProposal = async () => {
+    if (!selectedWorker?.match_id || !appState.currentJob) {
+      alert("Harap pilih pekerja terlebih dahulu.");
+      return;
+    }
+
+    try {
+      // 1. Accept match in backend
+      await api.patch(`/jobs/${appState.currentJob.id}/accept-match`, {
+        match_id: selectedWorker.match_id
+      });
+
+      // 2. Open payment modal
+      showEscrowModal = true;
+    } catch (err: any) {
+      console.error("Match acceptance error:", err);
+      if (err.code === 'JOB_TAKEN') {
+        alert("Maaf, pekerja ini baru saja mengambil pekerjaan lain. Silakan pilih kandidat lain.");
+      } else {
+        alert("Gagal menghubungi pekerja: " + (err.message || "Terjadi kesalahan"));
+      }
+    }
   };
 
-  const confirmEscrowPayment = () => {
-    showEscrowModal = false;
-    transactionStep = 'proposal_sent';
+  const confirmEscrowPayment = async () => {
+    if (!appState.currentJob) return;
+    
+    try {
+      // 1. Create Payment session in backend
+      const paymentRes = await api.post<CreatePaymentResponse>('/payments/create', {
+        job_id: appState.currentJob.id
+      });
+
+      // 2. Open Midtrans Snap UI
+      const snap = (window as any).snap;
+      if (!snap) throw new Error("Midtrans SDK not loaded");
+
+      snap.pay(paymentRes.snap_token, {
+        onSuccess: (result: any) => {
+          console.log('Payment success:', result);
+          showEscrowModal = false;
+          transactionStep = 'proposal_sent';
+        },
+        onPending: (result: any) => {
+          console.log('Payment pending:', result);
+          alert("Pembayaran tertunda. Harap selesaikan pembayaran Anda.");
+        },
+        onError: (result: any) => {
+          console.error('Payment error:', result);
+          alert("Gagal melakukan pembayaran.");
+        },
+        onClose: () => {
+          console.log('Payment popup closed');
+        }
+      });
+
+    } catch (err: any) {
+      console.error("Payment initiation error:", err);
+      alert("Gagal memproses pembayaran: " + (err.message || "Terjadi kesalahan"));
+    }
   };
 
   const toggleAspect = (aspect: string) => {
@@ -152,8 +338,21 @@
     }
   };
 
-  const formatRupiah = (val: string) => {
-    return val.replace(/[^0-9]/g, '');
+  let isConfirming = $state(false);
+
+  const handleConfirmJob = async () => {
+    if (!appState.currentJob || isConfirming) return;
+    isConfirming = true;
+
+    try {
+      await api.patch(`/jobs/${appState.currentJob.id}/confirm`);
+      transactionStep = 'done';
+    } catch (err: any) {
+      console.error("Confirmation error:", err);
+      alert("Gagal mengkonfirmasi pekerjaan: " + (err.message || "Terjadi kesalahan"));
+    } finally {
+      isConfirming = false;
+    }
   };
 </script>
 
@@ -166,13 +365,6 @@
       <KerjantaraLogo iconSize={18} textSize="text-xs" />
       
       <div class="flex items-center gap-2">
-        <div class="hidden sm:flex items-center gap-1">
-          <span class="w-1.5 h-1.5 bg-success rounded-full animate-pulse"></span>
-          <span class="text-[9px] text-[#2f54eb] font-semibold bg-[#f0f5ff] border border-[#adc6ff] px-1 py-0.2 rounded font-sans uppercase">virt-sync</span>
-        </div>
-        
-        <div class="h-4 w-px bg-neutral-200"></div>
-        
         <div class="flex items-center gap-1.5 font-sans">
           <div class="w-5 h-5 rounded-full bg-[#1890ff] text-white flex items-center justify-center font-bold text-[9px]">
             {userName.slice(0, 1).toUpperCase()}
@@ -181,19 +373,30 @@
         </div>
         
         <span class="text-[9px] text-primary bg-[#e6f7ff] border border-[#91d5ff] px-1.5 py-0.5 rounded font-mono font-bold uppercase shrink-0">
-          Klien
+          Employer
         </span>
+
+        {#if onLogout}
+          <div class="h-4 w-px bg-neutral-200"></div>
+          <button
+            onclick={onLogout}
+            class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-[9px] rounded shadow-xs uppercase cursor-pointer"
+          >
+            Keluar
+          </button>
+        {/if}
       </div>
     </div>
 
-    <!-- INTERACTIVE DEMO ALARM WIDGET -->
-    {#if transactionStep === 'proposal_sent'}
-      <div class="m-3 p-3 bg-blue-50 border border-blue-200 rounded-lg shadow-sm flex flex-col gap-2">
-        <div class="flex items-start gap-2">
-          <AlertTriangle class="text-[#1890ff] shrink-0 mt-0.5" size={16} />
-          <p class="text-[11px] text-[#003a8c] leading-snug">
-            <strong>💡 Info Demo Simulasi:</strong> Tawaran Anda telah dikirim! Kini beralihlah ke <strong>Sisi Pekerja</strong> di menu simulator atas untuk memeriksa & menerima tawaran ini secara langsung.
-          </p>
+    <!-- Verification Pending Banner -->
+    {#if appState.user?.verif_status === 'pending'}
+      <div class="bg-blue-600 text-white px-4 py-3 flex items-center gap-3 shadow-md">
+        <div class="bg-white/20 p-1.5 rounded-lg shrink-0">
+          <Clock size={20} class="text-white animate-pulse" />
+        </div>
+        <div class="flex-1">
+          <p class="text-[11px] font-bold leading-tight">Verifikasi Identitas Sedang Diproses</p>
+          <p class="text-[9px] text-blue-100 mt-0.5 leading-snug">Data KTP & Selfie Anda sedang ditinjau admin. Beberapa fitur mungkin terbatas hingga disetujui.</p>
         </div>
       </div>
     {/if}
@@ -300,53 +503,70 @@
           </div>
 
           <div class="space-y-4">
-            <!-- 1. Kategori -->
-            <div class="space-y-1.5">
-              <label class="text-[11px] font-bold text-neutral-600 uppercase tracking-wide">Pilih Jenis Pekerjaan</label>
-              <div class="grid grid-cols-2 gap-2">
-                {#each categories as cat}
-                  {@const isLainnya = cat.name === 'Lainnya'}
-                  <div
-                    onclick={() => category = cat.name}
-                    class="p-3 rounded-lg border-2 text-center cursor-pointer transition-all {
-                      isLainnya ? 'col-span-2 flex items-center justify-center gap-2 py-2.5' : ''
-                    } {
-                      category === cat.name
-                        ? 'border-[#1890ff] bg-[#e6f7ff]'
-                        : 'border-neutral-200 bg-white hover:border-neutral-300'
-                    }"
+            <!-- 1. Kategori (Two-Tier Dropdown) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+               <div class="space-y-1.5">
+                  <label class="text-[11px] font-bold text-neutral-600 uppercase tracking-wide">Kategori Utama</label>
+                  <select 
+                    bind:value={parentCategoryId}
+                    class="w-full h-11 px-3 bg-white border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border-primary transition-all cursor-pointer"
                   >
-                    <div class={isLainnya ? 'text-base' : 'text-lg mb-1'}>{cat.icon}</div>
-                    <span class="font-bold text-[11px] text-neutral-850">{cat.name}</span>
-                  </div>
-                {/each}
-              </div>
+                     {#if isLoadingData}
+                        <option value={null}>Memuat...</option>
+                     {:else}
+                        {#if parentCategories.length === 0}
+                           <option value={null}>Tidak ada kategori</option>
+                        {/if}
+                        {#each parentCategories as cat}
+                           <option value={cat.id}>{cat.label}</option>
+                        {/each}
+                     {/if}
+                  </select>
+               </div>
+               <div class="space-y-1.5">
+                  <label class="text-[11px] font-bold text-neutral-600 uppercase tracking-wide">Sub-Kategori Keahlian</label>
+                  <select 
+                    bind:value={selectedCategoryId}
+                    disabled={!parentCategoryId || isLoadingData}
+                    class="w-full h-11 px-3 bg-white border border-neutral-300 rounded-lg text-sm focus:outline-none focus:border-primary transition-all disabled:bg-neutral-50 cursor-pointer"
+                  >
+                     {#if isLoadingData}
+                        <option value={null}>Memuat...</option>
+                     {:else}
+                        {#if subCategories.length === 0}
+                           <option value={null}>Pilih kategori utama dahulu</option>
+                        {/if}
+                        {#each subCategories as sub}
+                           <option value={sub.id}>{sub.label}</option>
+                        {/each}
+                     {/if}
+                  </select>
+               </div>
             </div>
 
             <!-- 2. Deskripsi -->
             <div class="space-y-1.5">
               <label class="text-[11px] font-bold text-neutral-600 uppercase tracking-wide">Detail Masalah (Deskripsi Pekerjaan)</label>
               <textarea
-                placeholder="Contoh: Saya butuh tukang untuk mengecat kamar tidur ukuran 4x3 meter, warna putih minimalis. Bahan cat sudah saya sediakan..."
+                placeholder="Contoh: Saya butuh tukang untuk mengecat kamar tidur ukuran 4x3 meter, warna putih minimalis..."
                 bind:value={description}
-                rows={3}
-                class="w-full text-xs p-3 border border-neutral-300 rounded-[6px] focus:outline-none focus:border-[#1890ff] placeholder:text-neutral-400 text-neutral-900 leading-relaxed"
+                rows={2}
+                class="w-full text-sm p-3 border border-neutral-300 rounded-lg focus:outline-none focus:border-primary placeholder:text-neutral-400 text-neutral-900 leading-relaxed"
               ></textarea>
             </div>
 
-            <!-- 3. Lokasi -->
+            <!-- 3. Lokasi & Map -->
             <div class="space-y-1.5">
-              <label class="text-[11px] font-bold text-neutral-600 uppercase tracking-wide">Alamat & Lokasi Pengerjaan</label>
-              <input
-                type="text"
+              <label class="text-[11px] font-bold text-neutral-600 uppercase tracking-wide">Alamat Pengerjaan</label>
+              <textarea
                 bind:value={location}
-                class="w-full text-xs p-2.5 border border-neutral-300 rounded-[6px] focus:outline-none focus:border-[#1890ff]"
-              />
-              <div class="h-20 bg-neutral-100 rounded-md border border-neutral-200 flex items-center justify-center relative overflow-hidden">
-                <div class="absolute inset-0 bg-[#e3eae9] flex items-center justify-center text-neutral-400 font-bold opacity-40">Static Map Simulation</div>
-                <MapPin class="text-[#1890ff] animate-bounce z-10" size={24} />
-                <span class="absolute bottom-1 right-2 text-[9px] text-neutral-400 bg-white/70 px-1 rounded">Kebayoran Baru</span>
+                rows={2}
+                class="w-full text-xs p-3 border border-neutral-300 rounded-t-lg focus:outline-none focus:border-primary"
+              ></textarea>
+              <div id="map-container" class="h-48 bg-neutral-100 rounded-b-lg border-x border-b border-neutral-300 relative overflow-hidden z-0">
+                 <!-- Map will be injected here -->
               </div>
+              <p class="text-[9px] text-neutral-400 italic">Geser pin pada peta untuk menyesuaikan lokasi tepatnya</p>
             </div>
 
             <!-- 4. Durasi -->
@@ -382,7 +602,15 @@
                   class="w-full pl-9 pr-4 py-2.5 text-xs font-bold border border-neutral-300 rounded-[6px] focus:outline-none focus:border-[#1890ff]"
                 />
               </div>
-              <span class="text-[10px] text-neutral-400 leading-none">Kosongkan bila ingin menegosiasikan harga di tempat</span>
+              {#if selectedRateCard}
+                <div class="bg-blue-50 border border-blue-100 rounded p-2 mt-1">
+                  <p class="text-[9px] text-blue-700 leading-tight">
+                    <span class="font-bold">💡 Saran Harga:</span> {selectedRateCard.label} (Rp {selectedRateCard.min_rate.toLocaleString('id-ID')} - {selectedRateCard.max_rate.toLocaleString('id-ID')})
+                  </p>
+                </div>
+              {:else}
+                <span class="text-[10px] text-neutral-400 leading-none">Kosongkan bila ingin menegosiasikan harga di tempat</span>
+              {/if}
             </div>
           </div>
 
@@ -390,9 +618,15 @@
             <button
               type="button"
               onclick={handlePostJob}
-              class="w-full bg-[#1890ff] hover:bg-blue-600 text-white py-3 rounded-lg font-bold text-xs tracking-wide shadow-sm flex items-center justify-center gap-1 cursor-pointer"
+              disabled={isPostingJob || isLoadingData}
+              class="w-full bg-[#1890ff] hover:bg-blue-600 text-white py-3 rounded-lg font-bold text-xs tracking-wide shadow-sm flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
             >
-              Cari Pekerja Sekarang &rarr;
+              {#if isPostingJob}
+                <Loader2 class="animate-spin" size={14} />
+                Mencari Pekerja Terdekat...
+              {:else}
+                Cari Pekerja Sekarang &rarr;
+              {/if}
             </button>
           </div>
         </div>
@@ -413,7 +647,7 @@
 
         <div class="bg-[#fafafa] border border-neutral-200 rounded-lg p-3 text-left w-full max-w-sm">
           <div class="text-[10px] uppercase font-bold text-[#1890ff] mb-1">Rincian Orderanmu:</div>
-          <p class="font-semibold text-xs text-neutral-800">🛠️ Kategori: {category}</p>
+          <p class="font-semibold text-xs text-neutral-800">🛠️ Kategori: {categoryName}</p>
           <p class="font-semibold text-xs text-neutral-800">📍 Lokasi: Kebayoran Baru, Jakarta</p>
         </div>
       </div>
@@ -421,7 +655,7 @@
     {:else if transactionStep === 'kandidat_list'}
       <div class="p-4 space-y-4 text-left">
         <div class="border-b border-neutral-200 pb-2">
-          <h3 class="font-bold text-sm text-neutral-900 leading-none">3 Kandidat Terbaik Untuk {category}</h3>
+          <h3 class="font-bold text-sm text-neutral-900 leading-none">3 Kandidat Terbaik Untuk {categoryName}</h3>
           <p class="text-[10px] text-neutral-500 mt-1">Dipilih otomatis berdasarkan verifikasi KTP, jarak terdekat & reputasi gemilang.</p>
         </div>
 
@@ -571,7 +805,7 @@
             </div>
             <div class="flex justify-between">
               <span class="text-neutral-400">Pekerjaan:</span>
-              <span class="font-bold text-neutral-900">{category}</span>
+              <span class="font-bold text-neutral-900">{categoryName}</span>
             </div>
             <div class="flex justify-between">
               <span class="text-neutral-400 font-medium">Tarif Kisaran:</span>
@@ -707,10 +941,16 @@
                 <!-- TWO DECISION BUTTONS FOR EMPLOYER -->
                 <div class="pt-2 flex flex-col gap-2">
                   <button
-                    onclick={() => transactionStep = 'done'}
-                    class="w-full py-2.5 bg-success hover:bg-green-600 text-white font-bold rounded-md text-[11px] uppercase tracking-wide shadow flex items-center justify-center gap-1.5 cursor-pointer"
+                    onclick={handleConfirmJob}
+                    disabled={isConfirming}
+                    class="w-full py-2.5 bg-success hover:bg-green-600 text-white font-bold rounded-md text-[11px] uppercase tracking-wide shadow flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
-                    <Award size={14} /> Setujui & Lepas Dana ({selectedWorker?.price})
+                    {#if isConfirming}
+                      <Loader2 size={14} class="animate-spin" />
+                      MEMPROSES...
+                    {:else}
+                      <Award size={14} /> Setujui & Lepas Dana ({selectedWorker?.price})
+                    {/if}
                   </button>
                   <button
                     onclick={onOpenDispute}
@@ -803,10 +1043,16 @@
               </div>
 
               <button
-                onclick={() => submittedRating = true}
-                class="w-full py-2.5 bg-[#1890ff] hover:bg-blue-600 text-white font-bold rounded-md text-[11px] uppercase tracking-wide shadow cursor-pointer"
+                onclick={handleRateJob}
+                disabled={isRating}
+                class="w-full py-2.5 bg-[#1890ff] hover:bg-blue-600 text-white font-bold rounded-md text-[11px] uppercase tracking-wide shadow cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                Kirim Ulasan Bintang &rarr;
+                {#if isRating}
+                  <Loader2 size={16} class="animate-spin" />
+                  MENGIRIM...
+                {:else}
+                  Kirim Ulasan Bintang &rarr;
+                {/if}
               </button>
             </div>
           {:else}
@@ -837,7 +1083,7 @@
                   onclick={onRestartTransaction}
                   class="w-full py-2.5 bg-neutral-900 hover:bg-black text-white font-bold rounded-md text-[11px] uppercase tracking-wide shadow cursor-pointer"
                 >
-                  Buka Permintaan Baru (Reset Simulasi)
+                  Buka Permintaan Baru &rarr;
                 </button>
               </div>
             </div>

@@ -3,8 +3,12 @@
     Check, Play, ArrowRight, MessageSquare, Phone, MapPin, Clock, Camera, 
     Trash2, ShieldAlert, Award, TrendingUp, AlertCircle, RefreshCw, Star, X
   } from '@lucide/svelte';
+  import { appState } from '../appState.svelte';
   import type { JobRequest, WorkerProfile, TransactionStep } from '../types';
   import KerjantaraLogo from '../components/KerjantaraLogo.svelte';
+  import { api } from '../api/client';
+  import type { Job } from '../api/types';
+  import { dataURLtoBlob } from '../utils';
 
   let {
     userName,
@@ -13,7 +17,8 @@
     selectedWorker,
     onOpenChat,
     onOpenDispute,
-    onRestartTransaction
+    onRestartTransaction,
+    onLogout
   } = $props<{
     userName: string;
     transactionStep: TransactionStep;
@@ -22,7 +27,12 @@
     onOpenChat: () => void;
     onOpenDispute: () => void;
     onRestartTransaction: () => void;
+    onLogout?: () => void;
   }>();
+
+  const userInitial = $derived(appState.user?.full_name?.slice(0, 2).toUpperCase() || 'U');
+  const userDisplayName = $derived(appState.user?.full_name || userName);
+  const verifStatus = $derived(appState.user?.verif_status || 'unverified');
 
   let activeMenu = $state<'beranda' | 'dompet' | 'riwayat'>('beranda');
   let showScoreModal = $state(false);
@@ -42,15 +52,75 @@
   let newPortTitle = $state('');
   let showAddPortfolio = $state(false);
 
-  let isActive = $state(true); // Availability Toggle
+  let isActive = $state(false); // Availability Toggle
+  let isTogglingActive = $state(false);
+
+  const handleToggleActive = async () => {
+    if (isTogglingActive) return;
+    isTogglingActive = true;
+
+    const nextState = !isActive;
+
+    try {
+      if (nextState) {
+        // 1. Get GPS coordinates
+        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+        });
+
+        // 2. Send active status and location to backend
+        await api.patch('/auth/worker/toggle', {
+          is_active: true,
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude
+        });
+        isActive = true;
+      } else {
+        // Turn offline
+        await api.patch('/auth/worker/toggle', {
+          is_active: false,
+          lat: 0,
+          lng: 0
+        });
+        isActive = false;
+      }
+    } catch (err: any) {
+      console.error("Failed to toggle active status:", err);
+      alert("Gagal mengubah status kehadiran: " + (err.message || "Pastikan izin lokasi diberikan."));
+    } finally {
+      isTogglingActive = false;
+    }
+  };
   let walletBalance = $state(1250000);
   let countdown = $state(179); // 3 menit countdown
   let agreeTerms = $state(false);
   let proofPhotos = $state<string[]>([]);
   let workerNote = $state('');
   let isDoneConfirmed = $state(false);
+  let starCount = $state(5);
+  let reviewInput = $state('');
+  let submittedRating = $state(false);
+  let isRating = $state(false);
   let payoutReceived = $state(false);
   let showPayoutAnim = $state(false);
+
+  const handleRateJob = async () => {
+    if (!appState.currentJob || isRating) return;
+    isRating = true;
+
+    try {
+      await api.post(`/jobs/${appState.currentJob.id}/rate`, {
+        score: starCount,
+        comment: reviewInput || "Bintang 5 diberikan!"
+      });
+      submittedRating = true;
+    } catch (err: any) {
+      console.error("Rating error:", err);
+      alert("Gagal mengirim rating: " + (err.message || "Terjadi kesalahan"));
+    } finally {
+      isRating = false;
+    }
+  };
 
   $effect(() => {
     if (transactionStep === 'done' && !payoutReceived && selectedWorker) {
@@ -83,14 +153,58 @@
     }
   });
 
-  const formatTime = (secs: number) => {
-    const min = Math.floor(secs / 60);
-    const sec = secs % 60;
-    return `${min < 10 ? '0' : ''}${min}:${sec < 10 ? '0' : ''}${sec}`;
+  let isCompleting = $state(false);
+
+  const handleCompleteJob = async () => {
+    if (!appState.currentJob || proofPhotos.length === 0 || isCompleting) return;
+    isCompleting = true;
+
+    try {
+      const formData = new FormData();
+      proofPhotos.forEach((dataUrl, i) => {
+        const blob = dataURLtoBlob(dataUrl);
+        formData.append('proof_photos[]', blob, `proof-${i}.jpg`);
+      });
+      formData.append('notes', workerNote);
+
+      await api.upload(`/jobs/${appState.currentJob.id}/complete`, formData);
+      
+      transactionStep = 'waiting_approval';
+    } catch (err: any) {
+      console.error("Job completion error:", err);
+      alert("Gagal mengirim bukti penyelesaian: " + (err.message || "Terjadi kesalahan"));
+    } finally {
+      isCompleting = false;
+    }
   };
 
-  const handleAcceptProposal = () => {
-    transactionStep = 'accepted';
+  let isArriving = $state(false);
+
+  const handleArrive = async () => {
+    if (!appState.currentJob || isArriving) return;
+    isArriving = true;
+
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject);
+      });
+
+      await api.patch(`/jobs/${appState.currentJob.id}/arrive`, {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude
+      });
+
+      transactionStep = 'arrived';
+    } catch (err: any) {
+      console.error("Arrival error:", err);
+      if (err.code === 'GPS_TOO_FAR') {
+        alert("Gagal Check-in: Anda masih terlalu jauh dari lokasi pekerjaan (> 50 meter).");
+      } else {
+        alert("Gagal mengirim koordinat: " + (err.message || "Pastikan izin lokasi diberikan."));
+      }
+    } finally {
+      isArriving = false;
+    }
   };
 
   const handleUploadPhoto = () => {
@@ -128,30 +242,42 @@
         
         <div class="flex items-center gap-1.5 font-sans">
           <div class="w-5 h-5 rounded-full bg-[#f5a623] text-neutral-900 flex items-center justify-center font-bold text-[9px]">
-            PB
+            {userInitial}
           </div>
-          <span class="text-[10px] font-semibold text-neutral-600">Pak Budi</span>
+          <span class="text-[10px] font-semibold text-neutral-600 truncate max-w-[80px]">{userDisplayName}</span>
         </div>
         
         <span class="text-[9px] text-amber-700 bg-[#fffbe6] border border-[#ffe58f] px-1.5 py-0.5 rounded font-mono font-bold uppercase shrink-0">
-          Mitra
+          Worker
         </span>
+
+        {#if onLogout}
+          <div class="h-4 w-px bg-neutral-200"></div>
+          <button
+            onclick={onLogout}
+            class="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 font-bold text-[9px] rounded shadow-xs uppercase cursor-pointer"
+          >
+            Keluar
+          </button>
+        {/if}
       </div>
     </div>
 
-    <!-- DEMO TOOLTIPS -->
-    {#if transactionStep === 'idle'}
-      <div class="m-3 p-3 bg-amber-50 border border-amber-200 rounded-lg shadow-sm flex flex-col gap-1 text-amber-800">
-        <div class="flex items-start gap-1.5">
-          <AlertCircle size={15} class="mt-0.5 shrink-0" />
-          <p class="text-[11px] leading-snug">
-            <strong>Panduan Simulasi Demo:</strong> Saat ini belum ada tawaran pekerjaan. Cobalah beralih ke <strong>Sisi Pemberi Kerja</strong> terlebih dahulu untuk mempublikasikan permintaan "Tukang Cat" yang baru!
-          </p>
+    <!-- Verification Pending Banner -->
+    {#if verifStatus === 'pending'}
+      <div class="bg-blue-600 text-white px-4 py-3 flex items-center gap-3 shadow-md">
+        <div class="bg-white/20 p-1.5 rounded-lg shrink-0">
+          <Clock size={20} class="text-white animate-pulse" />
+        </div>
+        <div class="flex-1">
+          <p class="text-[11px] font-bold leading-tight">Verifikasi Identitas Sedang Diproses</p>
+          <p class="text-[9px] text-blue-100 mt-0.5 leading-snug">Data KTP & Selfie Anda sedang ditinjau admin (1-5 menit). Anda tetap bisa memantau dashboard.</p>
         </div>
       </div>
     {/if}
 
     <!-- CONTENT MODULES -->
+
     {#if transactionStep === 'idle' && activeMenu === 'beranda'}
       <div class="p-4 space-y-4">
         <!-- Status Switch Box -->
@@ -161,10 +287,11 @@
             <p class="text-[10px] text-neutral-400">Aktifkan agar pemberi kerja terdekat bisa merekrutmu.</p>
           </div>
           <button
-            onclick={() => isActive = !isActive}
+            onclick={handleToggleActive}
+            disabled={isTogglingActive}
             class="w-12 h-6 flex items-center rounded-full p-0.5 transition-all focus:outline-none cursor-pointer {
               isActive ? 'bg-success' : 'bg-neutral-300'
-            }"
+            } {isTogglingActive ? 'opacity-50 cursor-not-allowed' : ''}"
           >
             <div
               class="bg-white w-5 h-5 rounded-full shadow-md transform transition-all {
@@ -187,9 +314,15 @@
                 🥇 Level 4: Gold Worker
               </h3>
             </div>
-            <span class="bg-amber-400/15 text-amber-400 border border-amber-400/35 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
-              Verified
-            </span>
+            {#if verifStatus === 'approved'}
+              <span class="bg-amber-400/15 text-amber-400 border border-amber-400/35 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                Verified
+              </span>
+            {:else if verifStatus === 'pending'}
+              <span class="bg-blue-400/15 text-blue-400 border border-blue-400/35 text-[9px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
+                Pending
+              </span>
+            {/if}
           </div>
 
           <div class="mt-3.5 mb-3.5">
@@ -574,10 +707,16 @@
 
           <div class="pt-2 flex flex-col gap-2">
             <button
-              onclick={() => transactionStep = 'arrived'}
-              class="w-full py-2.5 bg-success hover:bg-green-600 text-white font-bold rounded-md text-[11px] uppercase tracking-wide shadow flex items-center justify-center gap-1 cursor-pointer"
+              onclick={handleArrive}
+              disabled={isArriving}
+              class="w-full py-2.5 bg-success hover:bg-green-600 text-white font-bold rounded-md text-[11px] uppercase tracking-wide shadow flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
             >
-              <Check size={14} /> SAYA SUDAH TIBA DI LOKASI ✓
+              {#if isArriving}
+                <RefreshCw size={14} class="animate-spin" />
+                MEMVERIFIKASI LOKASI...
+              {:else}
+                <Check size={14} /> SAYA SUDAH TIBA DI LOKASI ✓
+              {/if}
             </button>
             <div class="flex gap-2">
               <button onclick={onOpenChat} class="flex-1 py-1.5 bg-white border border-neutral-300 rounded font-bold text-neutral-700 hover:bg-neutral-50 flex items-center justify-center gap-1 text-[10px] cursor-pointer">
@@ -658,15 +797,20 @@
 
           <div class="pt-2">
             <button
-              onclick={() => transactionStep = 'submitting_proof'}
-              disabled={proofPhotos.length === 0}
+              onclick={handleCompleteJob}
+              disabled={proofPhotos.length === 0 || isCompleting}
               class="w-full py-2.5 font-bold rounded-md text-[11px] uppercase tracking-wide shadow flex items-center justify-center gap-1 transition-all cursor-pointer {
-                proofPhotos.length > 0
+                proofPhotos.length > 0 && !isCompleting
                   ? 'bg-success text-white hover:bg-green-600'
                   : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
               }"
             >
-              Selesaikan Pekerjaan &rarr;
+              {#if isCompleting}
+                <RefreshCw size={14} class="animate-spin" />
+                MENGIRIM BUKTI...
+              {:else}
+                Selesaikan Pekerjaan &rarr;
+              {/if}
             </button>
             <p class="text-[9px] text-neutral-400 text-center mt-2">Unggah minimal 1 foto dokumentasi progres proyek di atas demi validitas pencairan.</p>
           </div>
@@ -733,53 +877,72 @@
     {:else if transactionStep === 'done'}
       <div class="p-4 space-y-4">
         <div class="bg-white border border-[#e8e8e8] rounded-lg p-5 text-center shadow-lg space-y-5">
-          <div class="w-16 h-16 bg-[#e6f7ff] text-primary rounded-full flex items-center justify-center mx-auto text-2xl">
-            🏆
-          </div>
-          <div>
-            <h3 class="font-extrabold text-sm text-neutral-900 leading-none mb-1">Kerja Bagus, Pak Budi! 🎉</h3>
-            <p class="text-neutral-500 text-[11px] leading-relaxed">Pekerjaan pengerjaan cat telah selesai dan sukses disetujui Ibu Sari.</p>
-          </div>
-
-          <!-- Ledger Komisi -->
-          <div class="bg-success/5 border-2 border-dashed border-success/30 rounded-lg p-4">
-            <span class="text-[9.5px] uppercase font-bold text-success block leading-none mb-1">KOMISI DITERIMA DI DOMPET:</span>
-            <span class="text-xl font-mono font-extrabold text-success">Rp 175.000</span>
-            <p class="text-[9px] text-neutral-400 mt-1.5 font-bold leading-none">Status: Sukses Dibayarkan & Cair Instan</p>
-          </div>
-
-          <!-- Rating from Employer -->
-          <div class="bg-amber-50 rounded-lg border border-amber-200 p-3.5 text-left space-y-1.5 text-[10.5px]">
-            <div class="flex justify-between items-center">
-              <span class="font-bold text-amber-800 uppercase text-[9px] tracking-wide">Ulasan Bintang Ibu Sari:</span>
-              <div class="flex text-amber-400">
-                <Star size={11} fill="currentColor" />
-                <Star size={11} fill="currentColor" />
-                <Star size={11} fill="currentColor" />
-                <Star size={11} fill="currentColor" />
-                <Star size={11} fill="currentColor" />
+          {#if !submittedRating}
+            <div class="space-y-5">
+              <div class="w-16 h-16 bg-[#e6f7ff] text-primary rounded-full flex items-center justify-center mx-auto text-2xl">
+                🏆
               </div>
-            </div>
-            <p class="text-neutral-600 italic">"Sangat ramah, hasil catnya rapi dan bersih kembali setelah dibereskan. Membawa semua perlengkapan sendiri. Highly recommended!"</p>
-          </div>
+              <div>
+                <h3 class="font-extrabold text-sm text-neutral-900 leading-none mb-1">Kerja Bagus, Mitra! 🎉</h3>
+                <p class="text-neutral-500 text-[11px] leading-relaxed">Pekerjaan telah selesai dan disetujui. Komisi Anda telah ditambahkan ke dompet.</p>
+              </div>
 
-          <!-- Progress and Level Update -->
-          <div class="bg-neutral-50 rounded border p-3 flex justify-between items-center text-left text-[11px] cursor-pointer" onclick={() => showScoreModal = true}>
-            <div>
-              <span class="font-extrabold text-neutral-800 block">KerjantaraScore Naik! ⭐</span>
-              <span class="text-neutral-400 text-[10px]">Tingkat kepatuhan proyek optimal · Lihat rincian</span>
-            </div>
-            <span class="font-mono font-black text-primary">4.90 &rarr; 4.92</span>
-          </div>
+              <div class="border-t border-b border-[#e8e8e8] py-4">
+                <span class="text-[11px] font-bold text-neutral-500 uppercase block mb-1">Beri Rating Pemberi Kerja</span>
+                <div class="flex gap-1.5 justify-center mt-1">
+                  {#each [1, 2, 3, 4, 5] as starIdx}
+                    <button
+                      type="button"
+                      onclick={() => starCount = starIdx}
+                      class="text-2xl transition-transform hover:scale-110 cursor-pointer {
+                        starCount >= starIdx ? 'text-amber-400' : 'text-neutral-200'
+                      }"
+                    >
+                      <Star size={24} fill={starCount >= starIdx ? 'currentColor' : 'none'} />
+                    </button>
+                  {/each}
+                </div>
+              </div>
 
-          <div class="pt-2 space-y-2">
-            <button
-              onclick={onRestartTransaction}
-              class="w-full py-2.5 bg-neutral-900 hover:bg-black text-white font-bold rounded-md text-[11px] uppercase tracking-wide shadow cursor-pointer"
-            >
-              Siap Sedia Terima Tawaran Baru (Reset)
-            </button>
-          </div>
+              <div class="space-y-1 text-left">
+                <label class="text-[10px] font-bold text-neutral-600 uppercase">Ulasan Anda</label>
+                <textarea
+                  placeholder="Ceritakan pengalaman Anda bekerja dengan beliau..."
+                  bind:value={reviewInput}
+                  rows={2}
+                  class="w-full text-xs p-3 border border-neutral-300 rounded focus:outline-none focus:border-[#1890ff] text-neutral-900"
+                ></textarea>
+              </div>
+
+              <button
+                onclick={handleRateJob}
+                disabled={isRating}
+                class="w-full py-2.5 bg-[#1890ff] hover:bg-blue-600 text-white font-bold rounded-md text-[11px] uppercase tracking-wide shadow flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {#if isRating}
+                  <RefreshCw size={16} class="animate-spin" />
+                  MENGIRIM...
+                {:else}
+                  Kirim Ulasan & Selesai &rarr;
+                {/if}
+              </button>
+            </div>
+          {:else}
+            <div class="space-y-6">
+              <div class="w-16 h-16 bg-success/10 text-success rounded-full flex items-center justify-center mx-auto animate-bounce">
+                🎉
+              </div>
+              <h3 class="font-extrabold text-sm text-neutral-900 mb-1">Terima Kasih, Mitra!</h3>
+              <p class="text-neutral-500 text-[11px]">Ulasan Anda sangat berarti bagi kami.</p>
+              
+              <button
+                onclick={onRestartTransaction}
+                class="w-full py-2.5 bg-neutral-900 hover:bg-black text-white font-bold rounded-md text-[11px] uppercase tracking-wide shadow cursor-pointer"
+              >
+                Siap Terima Tawaran Baru &rarr;
+              </button>
+            </div>
+          {/if}
         </div>
       </div>
     {/if}

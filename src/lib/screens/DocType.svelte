@@ -1,7 +1,7 @@
 <script lang="ts">
   import { ArrowLeft, Lock, CreditCard, CarFront, Book, Lightbulb, CheckCircle2 } from '@lucide/svelte';
 
-  let { onBack, onNext } = $props<{ onBack: () => void, onNext: () => void }>();
+  let { onBack, onNext } = $props<{ onBack?: () => void, onNext: () => void }>();
 
   let docType = $state<string | null>(null);
   let showTips = $state(true);
@@ -11,10 +11,12 @@
   <!-- Header -->
   <header class="px-5 pt-6 pb-4 flex flex-col gap-4">
     <div class="flex items-center relative">
-      <button onclick={onBack} class="p-2 -ml-2 text-neutral-900 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
-        <ArrowLeft size={24} />
-      </button>
-      <h1 class="font-bold text-lg flex-1 text-center pr-8 text-neutral-900">Verifikasi Identitas</h1>
+      {#if onBack}
+        <button onclick={onBack} class="p-2 -ml-2 text-neutral-900 hover:bg-neutral-100 rounded-full transition-colors cursor-pointer">
+          <ArrowLeft size={24} />
+        </button>
+      {/if}
+      <h1 class="font-bold text-lg flex-1 text-center {onBack ? 'pr-8' : ''} text-neutral-900">Verifikasi Identitas</h1>
     </div>
     
     <!-- Progress Stepper (3) -->
